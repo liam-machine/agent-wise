@@ -95,7 +95,11 @@ else
       name: process.env.AGENT_NAME,
       description: process.env.AGENT_DESC,
       instructions: process.env.AGENT_INSTRUCTIONS,
-      provider: "Ollama",
+      // provider MUST be the normalized endpoint name (lowercase). LibreChat keys
+      // its model map by normalizeEndpointName("Ollama") -> "ollama", but validates
+      // an agent run with modelsConfig[agent.provider] WITHOUT normalizing — so a
+      // capitalized "Ollama" here yields "Models for Ollama could not be loaded".
+      provider: "ollama",
       model: "qwen2.5:7b",
       tools: JSON.parse(process.env.TOOLS_JSON),
     }))')

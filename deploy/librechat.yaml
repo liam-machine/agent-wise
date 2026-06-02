@@ -60,7 +60,11 @@ endpoints:
       models:
         default:
           - "qwen2.5:7b"
-        fetch: true
+        # fetch:false — list models statically instead of querying Ollama at
+        # request time. A live fetch is racy: if it hasn't resolved when an agent
+        # initializes, model validation throws "endpoint_models_not_loaded" and
+        # the user sees "Models for Ollama could not be loaded". Static = reliable.
+        fetch: false
       titleConvo: true
       titleModel: "qwen2.5:7b"
       # Single-message title payloads work best as a "user" role for local models.
