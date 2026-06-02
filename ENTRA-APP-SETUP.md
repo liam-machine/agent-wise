@@ -151,19 +151,34 @@ docker compose up -d --force-recreate wiseway-doc-search
 
 The `graph` backend authenticates app-only (client credentials) with
 `TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET`, resolves the site from
-`SHAREPOINT_SITE_PATH` and its document-library **drive**, then searches **per
-drive**:
+`SHAREPOINT_SITE_PATH` and its document-library **drive**, then **lists,
+downloads, extracts, and ranks locally** — it does **not** call Graph's
+`search(q=)` at all.
 
-```http
-GET https://graph.microsoft.com/v1.0/drives/{drive-id}/root/search(q='annual leave')
-```
+Why: the per-drive `GET /drives/{drive-id}/root/search(q='…')` endpoint returns
+`500 generalException` under app-only `Sites.Selected` access (a known Graph
+limitation on freshly provisioned sites). So instead, the backend:
 
-The per-drive `search` endpoint is the one that respects `Sites.Selected` — do
-**not** use the tenant-wide `/search/query`, which assumes broad search permissions
-the app does not have. Returned `driveItem`s are mapped to the same hit shape as the
-local backend (`doc_id`, `title`, `source_url`, `snippet`, `category`), with
-`category` derived from the parent folder name (default `hr`), and then run through
-the **same role filter** before anything reaches the model.
+1. **Lists** every file under `SHAREPOINT_ROOT_FOLDER` by walking the drive tree
+   (`GET /drives/{drive-id}/root:/{folder}:/children`, following `@odata.nextLink`).
+2. **Downloads** each file's bytes (`GET /drives/{drive-id}/items/{item-id}/content`).
+3. **Extracts** plain text — `.docx` via the `mammoth` library, `.txt`/`.md`/`.csv`
+   as plain text — caches it in an in-memory index (TTL `GRAPH_INDEX_TTL_MS`,
+   default 5 min), and **ranks locally** (term-frequency with a filename-match
+   boost). Extracting text also means the tool can answer from the *contents* of
+   Word documents, which Graph's `/content` returns as a binary zip rather than text.
+
+Listing + downloading both work fine under `Sites.Selected`; only `search(q=)`
+fails — which is why this backend avoids it. (The tenant-wide `/search/query`
+endpoint is also unused, as it assumes broad search permissions the app does not
+have.) Returned `driveItem`s are mapped to the same hit shape as the local backend
+(`doc_id`, `title`, `source_url`, `snippet`, `category`), with `category` derived
+from the parent folder name (default `hr`), and then run through the **same role
+filter** before anything reaches the model.
+
+> Source of truth: `mcp-doc-search/backends/graph.js` (see the "WHY LIST+EXTRACT
+> INSTEAD OF Graph search(q=)" header comment and the `listFiles` / `extractText`
+> / `getIndexed` / `search` functions).
 
 ## Security recap
 
