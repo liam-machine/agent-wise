@@ -8,7 +8,7 @@ person's role is allowed to see, and it links the source policy for every fact.
 
 This repository is a **proof-of-concept being handed over to the Wiseway
 integration team**. It runs end-to-end on one laptop out of the box — bundled
-sample documents, a mock phone-and-PIN login, and a local LLM — so you can see
+sample documents, a simple User/Admin demo login, and a local LLM — so you can see
 the whole workflow working before wiring it into Wiseway's real systems. Each
 of those three stand-ins is a clearly marked seam that you replace at
 integration time.
@@ -44,7 +44,7 @@ it production-ready is in [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
 - **A security gate that lives in the tool, not the model** — document access is
   filtered server-side in the doc-search tool before anything reaches the LLM, so
   the model cannot reveal what it never sees.
-- **A mock phone + PIN login** — a throwaway OIDC identity provider so you can
+- **A simple demo login** — a User/Admin password box (not real auth) so you can
   exercise the whole sign-in → role → answer flow with no external dependencies.
 - **Swappable document backend** — runs against bundled sample Markdown docs by
   default; flip one environment variable to read a real SharePoint site via a
@@ -67,64 +67,67 @@ Five steps (these mirror the header of [`docker-compose.yml`](docker-compose.yml
 #    (Leave the Graph creds blank for the local-docs demo.)
 cp deploy/.env.example deploy/.env
 
-# 2. Generate the mock IdP's self-signed TLS cert.
-./mock-idp/gen-certs.sh
-
-# 3. Make host.docker.internal resolve in your browser too (one-time).
+# 2. Make host.docker.internal resolve in your browser too (one-time, for Ollama).
 echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
 
-# 4. Start the local model and pull the 7B model it uses.
+# 3. Start the local model and pull the 7B model it uses.
 ollama serve            # often already running after install
 ollama pull qwen2.5:7b
 
-# 5. Bring up the stack.
+# 4. Bring up the stack.
 docker compose up -d
+
+# 5. Create the two demo logins (User / Admin).
+./deploy/create-accounts.sh
 ```
 
-Then open **<http://localhost:3080>**. With auto-redirect on, you land straight on
-the Wiseway phone-and-PIN login.
+Then open **<http://localhost:3080>** — a Wiseway **User / Admin password box**
+appears (the demo login gate; see [Demo logins](#demo-logins)).
 
-Two more one-time steps make the demo fully functional:
+One more one-time step makes the demo fully functional:
 
-- **Seed the business roles.** After each demo user has logged in once (so their
-  Mongo user document exists), run `deploy/seed-roles.sh`, then log out and back
-  in. This writes the business role (warehouse / driver / office / hr-admin) onto
-  each user — the value that flows to the doc-search tool and decides what they can
-  read. (LibreChat lands every OIDC user as the generic `USER` role; the business
-  role is a separate string the tool reads — see [How it works](#how-it-works).)
-- **Create the agent once.** The "Wiseway HR & SOP Assistant" agent is built once
-  in LibreChat's **Agent Builder** UI (it can't be declared in YAML), then pinned
-  as the default. The full recipe — model, MCP tools, system prompt — is in the
-  comments of [`deploy/librechat.yaml`](deploy/librechat.yaml) under `modelSpecs`.
+- **Create the agent once, then share it.** Sign in as **Admin**, build the
+  "Wiseway HR & SOP Assistant" in LibreChat's **Agent Builder** (it can't be
+  declared in YAML), pin it as the default, and **share it publicly** (Agent
+  Builder → Share → anyone-can-view) so the **User** account can use it too. The
+  recipe — model, MCP tools, system prompt — is in the comments of
+  [`deploy/librechat.yaml`](deploy/librechat.yaml) under `modelSpecs`.
+
+> **Asset edits need a recreate.** If you change the login box or branding under
+> `deploy/wiseway-assets/`, run `docker compose up -d --force-recreate librechat`
+> (Docker's macOS bind mount pins the file inode) and hard-reload the browser
+> (LibreChat is a PWA — its service worker caches the assets).
 
 ### Demo logins
 
-Log in with the **mobile number** and **PIN**. These four identities are the
-single source of truth in [`mock-idp/staff.js`](mock-idp/staff.js) and are mirrored
-by [`deploy/seed-roles.sh`](deploy/seed-roles.sh).
+The login box asks you to pick **User** or **Admin** and type a password. The two
+accounts are created by [`deploy/create-accounts.sh`](deploy/create-accounts.sh).
 
-| Mobile       | PIN  | Role        | Name                   |
-|--------------|------|-------------|------------------------|
-| `0412345678` | 1234 | `warehouse` | Sam Tran (Warehouse)   |
-| `0423456789` | 2345 | `driver`    | Dee Okafor (Driver)    |
-| `0434567890` | 3456 | `office`    | Olivia Park (Office)   |
-| `0445678901` | 4567 | `hr-admin`  | Hannah Reed (HR Admin) |
+| Choose    | Password | LibreChat role | UI      | Reads                                         |
+|-----------|----------|----------------|---------|-----------------------------------------------|
+| **User**  | `user`   | `warehouse`    | minimal | HR + SOP + Safety                             |
+| **Admin** | `admin`  | `ADMIN`        | full    | everything incl. **payroll**; manages agents  |
+
+> **Demo only — not real security.** Anyone with the URL and "admin" gets full
+> access. Replace with Wiseway SSO before any real data (see
+> [`docs/INTEGRATION.md`](docs/INTEGRATION.md) §1).
 
 What each role may read (the gate, defined in
 [`mcp-doc-search/roles.yaml`](mcp-doc-search/roles.yaml)):
 
-| Role        | Allowed document categories          |
-|-------------|--------------------------------------|
-| `warehouse` | hr, sop, safety                      |
-| `driver`    | hr, sop, safety                      |
-| `office`    | hr, sop                              |
-| `hr-admin`  | hr, sop, safety, **payroll**         |
+| Role        | Allowed document categories               |
+|-------------|-------------------------------------------|
+| `warehouse` | hr, sop, safety                           |
+| `driver`    | hr, sop, safety                           |
+| `office`    | hr, sop                                   |
+| `hr-admin`  | hr, sop, safety, **payroll**              |
+| `admin`     | hr, sop, safety, **payroll** (everything) |
 
-**The moment that lands the point:** log in as Sam (warehouse) and ask *"what are
-the pay classifications?"* — the assistant finds nothing it's allowed to show and
-says so plainly. Log in as Hannah (hr-admin) and ask the same thing — now it
-returns the payroll document, cited. The warehouse user was never told a payroll
-doc exists; it was filtered out server-side before the model saw it.
+**The moment that lands the point:** sign in as **User** (warehouse) and ask *"what
+are the pay classifications?"* — the assistant finds nothing it's allowed to show
+and says so plainly. Sign in as **Admin** and ask the same thing — now it returns
+the payroll document, cited. The warehouse user was never told a payroll doc
+exists; it was filtered out server-side before the model saw it.
 
 ---
 
@@ -132,7 +135,7 @@ doc exists; it was filtered out server-side before the model saw it.
 
 The chain, login to cited answer:
 
-1. **Staff log in** through the OIDC identity provider (mock phone+PIN locally;
+1. **Staff log in** through the demo login gate (a User/Admin password box locally;
    Wiseway SSO after integration).
 2. **LibreChat receives the identity and the role**, and pins the user to the
    "Wiseway HR & SOP Assistant" agent running on the local LLM.
@@ -154,7 +157,7 @@ Two seams worth knowing up front:
 
 - **Two role concepts.** LibreChat's own `USER` role governs app features;
   Wiseway's *business* role (warehouse/driver/office/hr-admin) governs document
-  access and is what reaches the tool. In the demo, `deploy/seed-roles.sh` sets the
+  access and is what reaches the tool. In the demo, `deploy/create-accounts.sh` sets the
   business role on each user. The integration nuance — and why the business roles
   must also exist in LibreChat's Mongo `roles` collection — is in
   [`docs/INTEGRATION.md §1`](docs/INTEGRATION.md).
@@ -171,13 +174,12 @@ Two seams worth knowing up front:
 
 ## The stack
 
-Four containers plus the host LLM:
+Three containers plus the host LLM:
 
 | Service              | Port   | What it is                                                                 |
 |----------------------|--------|---------------------------------------------------------------------------|
-| `librechat`          | `3080` | Chat UI + agent API (forked LibreChat).                                    |
+| `librechat`          | `3080` | Chat UI + agent API (forked LibreChat). The demo login gate is a CSS/JS overlay on its client. |
 | `mongodb`            | —      | LibreChat's datastore (users, roles, conversations).                      |
-| `wiseway-idp`        | `9000` | **Mock** OIDC phone+PIN provider — *local dev only*, replaced at integration. |
 | `wiseway-doc-search` | `8000` | Role-scoped document-search tool, exposed over MCP — **the access gate**. |
 
 The LLM (**Ollama**, model `qwen2.5:7b`) runs **natively on the host**, not in
@@ -196,8 +198,7 @@ configured in [`deploy/librechat.yaml`](deploy/librechat.yaml) under
 | `CLAUDE.md`            | Guidance for Claude Code working in this repo.                                          |
 | `ENTRA-APP-SETUP.md`   | How to register the Entra app and grant `Sites.Selected` read on one SharePoint site.   |
 | `docs/`                | Handover docs — **`INTEGRATION.md`** (the build guide) and `ARCHITECTURE.md`.           |
-| `deploy/`              | Deployment glue: `librechat.yaml`, `.env.example`, brand assets, `seed-roles.sh`.       |
-| `mock-idp/`            | The mock phone+PIN OIDC provider (Node, `oidc-provider`). **Local dev only.**           |
+| `deploy/`              | Deployment glue: `librechat.yaml`, `.env.example`, brand assets, the demo login gate (`wiseway-assets/wiseway-role-ui.*`), `create-accounts.sh`. |
 | `mcp-doc-search/`      | The role-scoped doc-search MCP tool: `server.js` (the gate), backends, `roles.yaml`.    |
 | `sample-docs/`         | Six sample HR/SOP/safety/payroll Markdown docs used by the `local` backend.             |
 

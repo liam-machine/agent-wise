@@ -2,27 +2,34 @@
 # agent-wise — Wiseway Staff Assistant PoC
 # =============================================================================
 # Local-dev stack. Runs out of the box against the bundled sample documents and
-# a mock phone+PIN identity provider, so the integrating team can see the whole
-# workflow end-to-end before wiring in Wiseway's real systems.
+# a simple demo login, so the integrating team can see the whole workflow
+# end-to-end before wiring in Wiseway's real systems.
 #
 # Services:
 #   librechat          host :3080  — the chat UI + API (forked LibreChat)
 #   mongodb                        — Mongo 8, LibreChat's datastore
-#   wiseway-idp        host :9000  — MOCK OIDC provider (phone + PIN) — REPLACE with Wiseway SSO
 #   wiseway-doc-search host :8000  — role-scoped document-search tool (MCP) — the access gate
 #
 # The local AI model (Ollama) runs NATIVELY on the host, NOT in Docker, and is
 # reached at http://host.docker.internal:11434/v1/. See README.md.
+#
+# AUTH (DEMO): a simple User/Admin password box (deploy/wiseway-assets/
+# wiseway-role-ui.js) replaces real SSO so anyone can try the demo. *** This is
+# NOT real security — replace it with Wiseway SSO before any real data. ***
+# INTEGRATE: re-point LibreChat at Wiseway's OIDC and remove the demo gate —
+# see docs/INTEGRATION.md §1.
 #
 # >>> INTEGRATION TOUCH POINTS are flagged with "INTEGRATE:" comments below and
 #     documented in full in docs/INTEGRATION.md. <<<
 #
 # First run:
 #   1. cp deploy/.env.example deploy/.env   (then fill the REPLACE_ME secrets)
-#   2. ./mock-idp/gen-certs.sh              (self-signed cert for the mock IdP)
-#   3. add to /etc/hosts:  127.0.0.1 host.docker.internal
-#   4. ollama serve  &&  ollama pull qwen2.5:7b
-#   5. docker compose up -d
+#   2. add to /etc/hosts:  127.0.0.1 host.docker.internal
+#   3. ollama serve  &&  ollama pull qwen2.5:7b
+#   4. docker compose up -d
+#   5. ./deploy/create-accounts.sh          (creates the user/admin demo logins)
+#   6. ./deploy/build-role-ui-index.sh      (only if the login box doesn't show —
+#                                            regenerates index.html for the pulled image)
 # =============================================================================
 
 services:
@@ -38,14 +45,9 @@ services:
       - HOST=0.0.0.0
       - PORT=3080
       - CONFIG_PATH=/app/librechat.yaml
-      # Trust the mock IdP's self-signed cert for OIDC discovery + token calls.
-      # INTEGRATE: with a real CA-signed SSO endpoint this is not needed.
-      - NODE_EXTRA_CA_CERTS=/app/certs/idp.crt
     volumes:
       # Wiseway runtime config (branding, model endpoint, MCP doc-search server).
       - ./deploy/librechat.yaml:/app/librechat.yaml
-      # Mock IdP CA cert so the backend trusts the (local) HTTPS issuer.
-      - ./mock-idp/certs/idp.crt:/app/certs/idp.crt:ro
       # Brand assets — overlaid onto LibreChat's built client at /app/client/dist/assets.
       - ./deploy/wiseway-assets/logo.svg:/app/client/dist/assets/logo.svg:ro
       - ./deploy/wiseway-assets/favicon.svg:/app/client/dist/assets/favicon.svg:ro
@@ -54,11 +56,17 @@ services:
       - ./deploy/wiseway-assets/apple-touch-icon-180x180.png:/app/client/dist/assets/apple-touch-icon-180x180.png:ro
       - ./deploy/wiseway-assets/icon-192x192.png:/app/client/dist/assets/icon-192x192.png:ro
       - ./deploy/wiseway-assets/maskable-icon.png:/app/client/dist/assets/maskable-icon.png:ro
+      # Demo login gate + role-scoped UI (presentation only). The generated
+      # index.html injects the css/js. NOTE: after any change to these three
+      # files you MUST `docker compose up -d --force-recreate librechat` — the
+      # macOS bind mount pins the inode, so an in-place edit won't propagate.
+      - ./deploy/wiseway-assets/index.html:/app/client/dist/index.html:ro
+      - ./deploy/wiseway-assets/wiseway-role-ui.css:/app/client/dist/assets/wiseway-role-ui.css:ro
+      - ./deploy/wiseway-assets/wiseway-role-ui.js:/app/client/dist/assets/wiseway-role-ui.js:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - mongodb
-      - wiseway-idp
       - wiseway-doc-search
     networks:
       - wiseway
@@ -70,29 +78,6 @@ services:
     command: mongod --quiet --logpath /dev/null
     volumes:
       - mongo-data:/data/db
-    networks:
-      - wiseway
-
-  # INTEGRATE: this mock IdP is for LOCAL DEV ONLY. Replace it with Wiseway's
-  # OIDC/OAuth2 provider (point LibreChat's OPENID_* at /oauth2/authorize, /token,
-  # /jwks, /userinfo). It must emit a `role` claim. See docs/INTEGRATION.md §1.
-  wiseway-idp:
-    build:
-      context: ./mock-idp
-    container_name: wiseway-idp
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-    environment:
-      # HTTPS issuer — LibreChat's OIDC strategy rejects a plain-HTTP issuer.
-      - ISSUER=https://host.docker.internal:9000
-      - REDIRECT_URI=http://localhost:3080/oauth/openid/callback
-      - TLS_CERT_FILE=/app/certs/idp.crt
-      - TLS_KEY_FILE=/app/certs/idp.key
-    volumes:
-      - ./mock-idp/certs:/app/certs:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - wiseway
 
@@ -114,8 +99,9 @@ services:
       - WISEWAY_DOC_BACKEND=local
       # Pin the port (deploy/.env carries PORT=3080 for LibreChat; must not leak here).
       - PORT=8000
-      # graph backend only: the SharePoint subtree to index.
-      - SHAREPOINT_ROOT_FOLDER=Wiseway-Demo
+      # graph backend only: Microsoft Search API region (REQUIRED for app-only
+      # /search/query). Set to your tenant's region (e.g. AUS, NAM, EUR).
+      - GRAPH_SEARCH_REGION=AUS
     volumes:
       - ./sample-docs:/app/sample-docs:ro
     networks:

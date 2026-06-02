@@ -16,3 +16,5 @@ roles:
   driver:    [hr, sop, safety]
   office:    [hr, sop]
   hr-admin:  [hr, sop, safety, payroll]
+  # ADMIN is the demo "admin" login (also LibreChat's admin role) — sees everything.
+  admin:     [hr, sop, safety, payroll]

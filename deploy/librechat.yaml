@@ -118,6 +118,13 @@ mcpServers:
 # Builder. The agent's own avatar (set in Mongo) is what renders in-chat.
 modelSpecs:
   prioritize: true
+  # Surface these endpoints in the selector ALONGSIDE the pinned Wiseway spec, so
+  # staff default to the assistant but Claude (cloud) and Ollama (local) are also
+  # selectable. "anthropic" only appears once ANTHROPIC_API_KEY is set in deploy/.env.
+  addedEndpoints:
+    - "agents"
+    - "Ollama"
+    - "anthropic"
   list:
     - name: "wiseway-hr-sop-assistant"
       label: "Wiseway HR & SOP Assistant"

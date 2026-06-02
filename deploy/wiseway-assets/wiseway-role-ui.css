@@ -1,0 +1,78 @@
+/* =============================================================================
+ * Wiseway Staff Assistant — role-scoped minimal UI
+ * =============================================================================
+ * Applied ONLY when wiseway-role-ui.js tags <html data-wiseway-ui="minimal">,
+ * which it does for blue-collar roles (warehouse | driver). For office / hr-admin
+ * / ADMIN the attribute is absent, so every rule below is inert and they keep the
+ * full LibreChat UI.
+ *
+ * This is purely cosmetic — it hides chrome, it does not disable any feature
+ * server-side. The goal is the simplest possible surface for shop-floor staff:
+ * just "New Chat" + their chat history, plus the account/logout control.
+ *
+ * Selectors are keyed on aria-label / data-testid (stable across React renders),
+ * captured from the running build on 2026-06-02.
+ * ===========================================================================*/
+
+/* --- Left icon rail: hide every feature button -------------------------------
+ * Kept: "New chat", "Chat History", "Close sidebar", "Account Settings".        */
+html[data-wiseway-ui="minimal"] button[aria-label="Agent Builder"],
+html[data-wiseway-ui="minimal"] button[aria-label="Prompts"],
+html[data-wiseway-ui="minimal"] button[aria-label="Memories"],
+html[data-wiseway-ui="minimal"] button[aria-label="Bookmarks"],
+html[data-wiseway-ui="minimal"] button[aria-label="Attach Files"],
+html[data-wiseway-ui="minimal"] button[aria-label="MCP Settings"] {
+  display: none !important;
+}
+
+/* --- Top header: lock to the pinned assistant, strip the extras --------------
+ * "Select a model" is the endpoint/agent switcher; hiding it keeps staff on the
+ * pinned Wiseway HR & SOP Assistant. The rest are power-user affordances.       */
+html[data-wiseway-ui="minimal"] button[aria-label="Select a model"],
+html[data-wiseway-ui="minimal"] button[aria-label="Temporary Chat"],
+html[data-wiseway-ui="minimal"] [data-testid="add-multi-convo-button"],
+html[data-wiseway-ui="minimal"] [data-testid="bookmark-menu"],
+html[data-wiseway-ui="minimal"] [data-testid="favorite-item"],
+html[data-wiseway-ui="minimal"] [data-testid="favorite-options-button"] {
+  display: none !important;
+}
+
+/* =============================================================================
+ * Demo login gate (wiseway-role-ui.js mounts #wiseway-login when signed out).
+ * Full-screen opaque cover so LibreChat's native login never shows. DEMO ONLY.
+ * ===========================================================================*/
+#wiseway-login {
+  position: fixed; inset: 0; z-index: 2147483647;
+  display: flex; align-items: center; justify-content: center;
+  background: #0b1220;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+#wiseway-login .wl-card {
+  width: 330px; max-width: 90vw; box-sizing: border-box;
+  padding: 30px 28px 24px;
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+#wiseway-login .wl-logo { width: 60px; height: 60px; border-radius: 12px; margin-bottom: 12px; }
+#wiseway-login .wl-title { font-size: 18px; font-weight: 700; color: #11203a; }
+#wiseway-login .wl-sub { font-size: 12.5px; color: #5b6b86; margin: 6px 0 18px; }
+#wiseway-login .wl-roles { display: flex; gap: 8px; width: 100%; margin-bottom: 14px; }
+#wiseway-login .wl-role {
+  flex: 1; padding: 10px 0; border: 1px solid #d3dae6; background: #f5f7fb;
+  border-radius: 10px; font-weight: 600; font-size: 14px; color: #2a3a57; cursor: pointer;
+}
+#wiseway-login .wl-role.wl-on { background: #d6242b; border-color: #d6242b; color: #fff; }
+#wiseway-login .wl-pw {
+  width: 100%; box-sizing: border-box; padding: 11px 12px;
+  border: 1px solid #d3dae6; border-radius: 10px; font-size: 14px; margin-bottom: 12px;
+}
+#wiseway-login .wl-pw:focus { outline: none; border-color: #11203a; }
+#wiseway-login .wl-go {
+  width: 100%; padding: 11px; border: 0; border-radius: 10px;
+  background: #11203a; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer;
+}
+#wiseway-login.wl-busy .wl-go { opacity: .55; pointer-events: none; }
+#wiseway-login .wl-err { color: #d6242b; font-size: 12px; min-height: 15px; margin-top: 10px; }
+#wiseway-login .wl-hint { color: #95a1b6; font-size: 11px; margin-top: 10px; }
+#wiseway-login .wl-hint b { color: #5b6b86; }
