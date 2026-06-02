@@ -28,7 +28,8 @@
 #   3. ollama serve  &&  ollama pull qwen2.5:7b
 #   4. docker compose up -d
 #   5. ./deploy/create-accounts.sh          (creates the user/admin demo logins)
-#   6. ./deploy/build-role-ui-index.sh      (only if the login box doesn't show —
+#   6. ./deploy/create-agent.sh             (seeds + pins the default "SOP" agent)
+#   7. ./deploy/build-role-ui-index.sh      (only if the login box doesn't show —
 #                                            regenerates index.html for the pulled image)
 # =============================================================================
 

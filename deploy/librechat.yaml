@@ -92,7 +92,9 @@ mcpServers:
 # ---------------------------------------------------------------------------
 # Model specs — the curated "Wiseway HR & SOP Assistant" entry
 # ---------------------------------------------------------------------------
-# The agent itself is created ONCE in the LibreChat UI (Agent Builder):
+# The "SOP" agent is now seeded automatically by deploy/create-agent.sh (via the
+# LibreChat REST API), which also shares it publicly and patches agent_id below.
+# The manual UI recipe is kept here for reference / customization (Agent Builder):
 #   1. Sign in as an admin, open Agents -> create a new agent.
 #   2. Endpoint = Ollama, model = qwen2.5:7b.
 #   3. Add the MCP tools "search" and "fetch" from the wiseway-docs server.
@@ -118,6 +120,13 @@ mcpServers:
 # Builder. The agent's own avatar (set in Mongo) is what renders in-chat.
 modelSpecs:
   prioritize: true
+  # enforce:false lets staff fall back to the plain Ollama model — and pick any
+  # OTHER agent the admin has shared — if the pinned SOP agent is unavailable.
+  # *** Set enforce:true for production *** to LOCK staff to the gated SOP agent,
+  # so they can never get un-cited, un-role-scoped answers from the bare model.
+  # (A plain-model chat has NO wiseway-docs tool, so no role gate and no citations
+  # — it can't leak docs, but it also can't honour the access policy.)
+  enforce: false
   # Surface these endpoints in the selector ALONGSIDE the pinned Wiseway spec, so
   # staff default to the assistant but Claude (cloud) and Ollama (local) are also
   # selectable. "anthropic" only appears once ANTHROPIC_API_KEY is set in deploy/.env.
@@ -126,12 +135,13 @@ modelSpecs:
     - "Ollama"
     - "anthropic"
   list:
-    - name: "wiseway-hr-sop-assistant"
-      label: "Wiseway HR & SOP Assistant"
+    - name: "sop"
+      label: "SOP"
       default: true
       description: "Cited answers on HR policy, SOPs and safety — scoped to your role."
       iconURL: "/assets/icon-192x192.png"
       greeting: "Hi — I'm the Wiseway HR & SOP Assistant. Ask me about leave, rosters, safety procedures, or any SOP. I only answer from the documents your role can see, and I link the source for every answer."
       preset:
         endpoint: "agents"
-        agent_id: "agent_ZZLhP6xDM7udHv5tYHGrT"
+        # Seeded + auto-patched by deploy/create-agent.sh (the "SOP" agent).
+        agent_id: "agent_KfDm7NcIG3gia3vf8UfQS"

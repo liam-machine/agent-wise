@@ -79,19 +79,25 @@ docker compose up -d
 
 # 5. Create the two demo logins (User / Admin).
 ./deploy/create-accounts.sh
+
+# 6. Seed + pin the default "SOP" agent (creates it, shares it to both logins,
+#    patches librechat.yaml, restarts LibreChat).
+./deploy/create-agent.sh
 ```
 
 Then open **<http://localhost:3080>** — a Wiseway **User / Admin password box**
-appears (the demo login gate; see [Demo logins](#demo-logins)).
+appears (the demo login gate; see [Demo logins](#demo-logins)). Both accounts land
+on the pinned **"SOP"** assistant out of the box.
 
-One more one-time step makes the demo fully functional:
-
-- **Create the agent once, then share it.** Sign in as **Admin**, build the
-  "Wiseway HR & SOP Assistant" in LibreChat's **Agent Builder** (it can't be
-  declared in YAML), pin it as the default, and **share it publicly** (Agent
-  Builder → Share → anyone-can-view) so the **User** account can use it too. The
-  recipe — model, MCP tools, system prompt — is in the comments of
-  [`deploy/librechat.yaml`](deploy/librechat.yaml) under `modelSpecs`.
+> **About the agent.** LibreChat agents can't be declared in YAML, but they *can*
+> be created via its REST API — so [`deploy/create-agent.sh`](deploy/create-agent.sh)
+> ships the "SOP" agent (Ollama `qwen2.5:7b`, the `wiseway-docs` search+fetch
+> tools, the citing system prompt), shares it publicly so the **User** account can
+> open it, and ensures the `warehouse` role carries `AGENTS.USE`. To customise it,
+> sign in as **Admin** → **Agent Builder**; the prompt/tool recipe is also in the
+> comments of [`deploy/librechat.yaml`](deploy/librechat.yaml) under `modelSpecs`.
+> `modelSpecs.enforce` is `false` (staff may also pick the plain model / other
+> shared agents) — set it `true` for production to lock staff to the gated agent.
 
 > **Asset edits need a recreate.** If you change the login box or branding under
 > `deploy/wiseway-assets/`, run `docker compose up -d --force-recreate librechat`

@@ -28,6 +28,13 @@ echo "Setting roles (user->warehouse, admin->ADMIN)…"
 docker exec "$DB" mongosh LibreChat --quiet --eval '
   db.users.updateOne({email:"user@wiseway.demo"},  {$set:{role:"warehouse"}});
   db.users.updateOne({email:"admin@wiseway.demo"}, {$set:{role:"ADMIN"}});
+  // The business role "warehouse" must ALSO exist in the roles collection or the
+  // user inherits no feature permissions (e.g. AGENTS.USE) and cannot open shared
+  // agents — the LibreChat role nuance in CLAUDE.md. Clone the stock USER role.
+  if (!db.roles.findOne({name:"warehouse"})) {
+    const u = db.roles.findOne({name:"USER"});
+    if (u) { delete u._id; u.name = "warehouse"; db.roles.insertOne(u); }
+  }
   print("  done.");
 '
 
