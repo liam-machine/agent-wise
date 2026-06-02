@@ -1,0 +1,19 @@
+# Secrets / local config (never commit) ---------------------------------------
+deploy/.env
+**/.env
+*.local.env
+*.secret
+**/*.secret
+
+# Generated self-signed certs (run mock-idp/gen-certs.sh) ----------------------
+mock-idp/certs/
+
+# Dependencies ----------------------------------------------------------------
+**/node_modules/
+
+# Local datastore (named docker volume; ignore stray bind mounts) --------------
+deploy/data-node/
+
+# OS / editor cruft -----------------------------------------------------------
+.DS_Store
+*.log

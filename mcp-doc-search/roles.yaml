@@ -1,0 +1,18 @@
+# Wiseway role -> allowed document categories.
+#
+# THIS FILE IS THE SECURITY GATE.
+# The MCP server resolves the caller's role from the trusted X-User-Role header
+# (injected by LibreChat from the Mongo user document) and uses this map to
+# filter search/fetch results SERVER-SIDE before anything is returned to the
+# model. A category that is not listed for a role is never surfaced.
+#
+# Document categories in the corpus: hr, sop, safety, payroll
+#
+# If a role is not found in this map, it is treated as having NO access
+# (fail closed) — see backend filtering in server.js.
+
+roles:
+  warehouse: [hr, sop, safety]
+  driver:    [hr, sop, safety]
+  office:    [hr, sop]
+  hr-admin:  [hr, sop, safety, payroll]

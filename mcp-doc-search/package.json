@@ -1,0 +1,23 @@
+{
+  "name": "wiseway-mcp-doc-search",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Role-scoped MCP document-search tool for the Wiseway Staff Assistant demo. The security boundary for document access.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.2",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0",
+    "mammoth": "^1.8.0",
+    "minisearch": "^7.1.2",
+    "zod": "^3.25.76"
+  }
+}

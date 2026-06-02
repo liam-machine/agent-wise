@@ -1,0 +1,19 @@
+{
+  "name": "wiseway-mock-idp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock phone+PIN OpenID Connect provider for the Wiseway Staff Assistant demo (SIMULATED login, not real security).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "oidc-provider": "^9.8.4"
+  }
+}

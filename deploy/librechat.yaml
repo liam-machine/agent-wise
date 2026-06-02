@@ -1,0 +1,130 @@
+# =============================================================================
+# Wiseway Staff Assistant — LibreChat runtime config
+# =============================================================================
+# Mounted into the container at /app/librechat.yaml (CONFIG_PATH points here).
+# Keep ALL Wiseway customization here — never patch LibreChat source.
+#
+# Three branding knobs live in this repo:
+#   1. APP_TITLE env (deploy/.env)        -> browser tab + app name
+#   2. interface.customWelcome (below)    -> greeting on a fresh chat
+#   3. interface.customFooter (below)     -> footer line under the composer
+#   4. deploy/wiseway-assets/*.svg        -> logo + favicon (mounted over assets)
+# See deploy/README.md for which knob does what.
+# =============================================================================
+
+version: 1.2.8
+cache: true
+
+# ---------------------------------------------------------------------------
+# MCP settings — allowlist the internal doc-search hostname so LibreChat's
+# SSRF guard permits the streamable-http connection. Without this, LibreChat
+# blocks private/internal hostnames ("Domain ... is not allowed").
+# ---------------------------------------------------------------------------
+mcpSettings:
+  allowedDomains:
+    - "wiseway-doc-search"
+
+# ---------------------------------------------------------------------------
+# Interface — branding + which feature buttons are exposed
+# ---------------------------------------------------------------------------
+interface:
+  # APP_TITLE is read from env; the title that shows in the tab / header.
+  # (Set via deploy/.env -> APP_TITLE=Wiseway Assistant)
+  customWelcome: "Welcome to the Wiseway Staff Assistant. Ask about HR policy, SOPs, or safety procedures — answers are drawn only from the documents your role is allowed to see, and every fact is cited."
+  customFooter: "Wiseway Logistics — internal use only"
+  # Agents endpoint is the host for the Wiseway HR & SOP Assistant agent.
+  agents: true
+  # No native file upload search or web search for this demo — the MCP
+  # doc-search tool is the only retrieval path, and it is role-scoped.
+  fileSearch: false
+  webSearch: false
+
+# ---------------------------------------------------------------------------
+# Endpoints — local Ollama (native on the host, reached via host.docker.internal)
+# ---------------------------------------------------------------------------
+endpoints:
+  # Agents endpoint — required so we can build an agent that uses the
+  # role-scoped MCP doc-search tools. "tools" capability enables MCP tools.
+  agents:
+    disableBuilder: false
+    capabilities:
+      - "tools"
+      - "actions"
+      - "chain"
+  custom:
+    - name: "Ollama"
+      # Ollama ignores the API key but LibreChat requires a non-empty value.
+      apiKey: "ollama"
+      # Ollama runs NATIVELY on the macOS host (Metal GPU), not in Docker.
+      baseURL: "http://host.docker.internal:11434/v1/"
+      models:
+        default:
+          - "qwen2.5:7b"
+        fetch: true
+      titleConvo: true
+      titleModel: "qwen2.5:7b"
+      # Single-message title payloads work best as a "user" role for local models.
+      titleMessageRole: "user"
+      modelDisplayLabel: "Ollama (qwen2.5:7b)"
+
+# ---------------------------------------------------------------------------
+# MCP servers — role-scoped Wiseway document search
+# ---------------------------------------------------------------------------
+# Identity is injected ONLY via headers. The doc-search service trusts these
+# because the request also carries the shared MCP key. Role-based filtering
+# happens server-side in the MCP tool, BEFORE results reach the model.
+#   X-User-Role -> {{LIBRECHAT_USER_ROLE}}  (warehouse | driver | office | hr-admin,
+#                  seeded per-user in Mongo — see deploy/seed-roles.sh)
+#   X-User-Id   -> {{LIBRECHAT_USER_ID}}
+#   X-Mcp-Key   -> ${WISEWAY_MCP_SHARED_SECRET}  (env from deploy/.env)
+mcpServers:
+  wiseway-docs:
+    type: streamable-http
+    url: "http://wiseway-doc-search:8000/mcp"
+    headers:
+      X-User-Role: "{{LIBRECHAT_USER_ROLE}}"
+      X-User-Id: "{{LIBRECHAT_USER_ID}}"
+      X-Mcp-Key: "${WISEWAY_MCP_SHARED_SECRET}"
+    timeout: 30000
+    startup: true
+    chatMenu: false
+
+# ---------------------------------------------------------------------------
+# Model specs — the curated "Wiseway HR & SOP Assistant" entry
+# ---------------------------------------------------------------------------
+# The agent itself is created ONCE in the LibreChat UI (Agent Builder):
+#   1. Sign in as an admin, open Agents -> create a new agent.
+#   2. Endpoint = Ollama, model = qwen2.5:7b.
+#   3. Add the MCP tools "search" and "fetch" from the wiseway-docs server.
+#   4. Paste the system prompt below into the agent's instructions.
+#   5. Save, copy the resulting agent id (looks like "agent_xxxxxxxx"), and
+#      paste it into preset.agent_id below, then restart LibreChat.
+#
+# Example agent system prompt (the citing instruction is load-bearing — the
+# local model will NOT auto-cite, so we instruct it explicitly):
+#
+#   You are the Wiseway HR & SOP Assistant. Answer staff questions about HR
+#   policy, standard operating procedures, and workplace safety using ONLY the
+#   wiseway-docs search and fetch tools. Always call search first. Cite every
+#   fact as a Markdown link [Title](source_url) using the title and source_url
+#   from each search hit. If search returns nothing relevant, say plainly that
+#   you do not know and that the answer is not in the documents you can access.
+#   Never invent policy. You only ever see documents this staff member's role
+#   is permitted to read.
+#
+# Pin the Wiseway HR & SOP Assistant as the default landing experience and
+# brand it with the Wiseway logo. iconURL points at the mounted Wiseway
+# logo.svg (served from /assets/); agent_id is the real id from the Agent
+# Builder. The agent's own avatar (set in Mongo) is what renders in-chat.
+modelSpecs:
+  prioritize: true
+  list:
+    - name: "wiseway-hr-sop-assistant"
+      label: "Wiseway HR & SOP Assistant"
+      default: true
+      description: "Cited answers on HR policy, SOPs and safety — scoped to your role."
+      iconURL: "/assets/icon-192x192.png"
+      greeting: "Hi — I'm the Wiseway HR & SOP Assistant. Ask me about leave, rosters, safety procedures, or any SOP. I only answer from the documents your role can see, and I link the source for every answer."
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_ZZLhP6xDM7udHv5tYHGrT"
