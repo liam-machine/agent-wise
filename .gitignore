@@ -30,3 +30,16 @@ eval/promptfoo/promptfooconfig.generated.json
 eval/promptfoo/results.json
 eval/promptfoo/.promptfoo/
 eval/raw-extract/
+
+# --- Sensitive: real Wiseway SOP content (names + internal procedures) — LOCAL ONLY ---
+# The eval harness/scripts are committed; the document data is not (public repo).
+docs/SOP/
+eval/questions/
+eval/build/
+eval/promptfoo/results*.json
+# Real-SOP-derived corpus (the original synthetic contoso docs stay tracked).
+sample-docs/abf-77g-general-obligations.md
+sample-docs/depot-warehouse-operations-sop.md
+sample-docs/generating-cl-and-tns.md
+sample-docs/security-response-sop.md
+sample-docs/visitor-sop-perth.md
