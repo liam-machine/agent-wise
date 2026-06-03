@@ -15,12 +15,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const EVAL = join(dirname(fileURLToPath(import.meta.url)), '..');
-const path = process.argv[2] || join(EVAL, 'promptfoo', 'results.json');
-if (!existsSync(path)) { console.error(`✗ results file not found: ${path}\n  run promptfoo eval with -o results.json first`); process.exit(1); }
-
-const raw = JSON.parse(readFileSync(path, 'utf8'));
-const rows = raw.results?.results || raw.results || [];
-if (!rows.length) { console.error('✗ no result rows found in file'); process.exit(1); }
+// Accept one or more results files; rows from all are merged (handy for showing
+// candidates that were run separately, e.g. an Opus-only run beside the combined one).
+const paths = process.argv.slice(2);
+if (!paths.length) paths.push(join(EVAL, 'promptfoo', 'results.json'));
+const rows = [];
+for (const p of paths) {
+  if (!existsSync(p)) { console.error(`✗ results file not found: ${p}`); process.exit(1); }
+  const raw = JSON.parse(readFileSync(p, 'utf8'));
+  rows.push(...(raw.results?.results || raw.results || []));
+}
+if (!rows.length) { console.error('✗ no result rows found'); process.exit(1); }
 
 // accumulate score sums/counts keyed by maps
 const acc = () => ({ sum: 0, n: 0 });
