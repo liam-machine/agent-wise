@@ -96,8 +96,11 @@ mcpServers:
 # ---------------------------------------------------------------------------
 # Model specs — the curated "Wiseway HR & SOP Assistant" entry
 # ---------------------------------------------------------------------------
-# The "SOP" agent is now seeded automatically by deploy/create-agent.sh (via the
-# LibreChat REST API), which also shares it publicly and patches agent_id below.
+# Two SOP agents are seeded automatically by deploy/create-agent.sh (via the
+# LibreChat REST API), which also shares them publicly and patches the agent_ids
+# below: "SOP Claude" (Anthropic Sonnet, the default for everyone) and "SOP"
+# (local Ollama, the fallback). Both use the SAME gated wiseway-docs tools + the
+# same citing prompt — only the model differs.
 # The manual UI recipe is kept here for reference / customization (Agent Builder):
 #   1. Sign in as an admin, open Agents -> create a new agent.
 #   2. Endpoint = Ollama, model = qwen2.5:7b.
@@ -131,18 +134,41 @@ modelSpecs:
   # (A plain-model chat has NO wiseway-docs tool, so no role gate and no citations
   # — it can't leak docs, but it also can't honour the access policy.)
   enforce: false
-  # Surface these endpoints in the selector ALONGSIDE the pinned Wiseway spec, so
-  # staff default to the assistant but Claude (cloud) and Ollama (local) are also
-  # selectable. "anthropic" only appears once ANTHROPIC_API_KEY is set in deploy/.env.
+  # Endpoints staff may pick in the CHAT selector. Deliberately NO cloud models
+  # here: Anthropic/OpenAI/Google are admin-managed and must NOT be selectable
+  # (or key-editable) by staff. They stay fully available to the admin in the
+  # Agent Builder's Provider dropdown (which is independent of this list), so the
+  # admin can still build agents on them. Staff are limited to the curated SOP
+  # agent + the local Ollama model.
+  #   NOTE: addedEndpoints is global (applies to every role). Cloud models are
+  #   kept out of staff reach by (a) their absence here and (b) the ADMIN-only
+  #   "create agents" permission set in the Admin Settings panel. interface
+  #   `modelSelect`/`modelSpecs.enforce` are global toggles, so they can't hide
+  #   models from staff-only — role-based agent permissions are the lever.
   addedEndpoints:
     - "agents"
     - "Ollama"
-    - "anthropic"
   list:
-    - name: "sop"
-      label: "SOP"
+    # Default for everyone: the Claude (Anthropic Sonnet) SOP agent. Same gated
+    # MCP tools + citing prompt as the local SOP agent — only the model differs.
+    # Runs on endpoint "agents" (the agent calls Claude internally), so staff
+    # never pick the raw Anthropic endpoint and the "no cloud models in the staff
+    # selector" rule above still holds. Requires ANTHROPIC_API_KEY in deploy/.env.
+    - name: "sop-claude"
+      label: "SOP Claude"
       default: true
       description: "Cited answers on HR policy, SOPs and safety — scoped to your role."
+      iconURL: "/assets/icon-192x192.png"
+      greeting: "Hi — I'm the Wiseway HR & SOP Assistant. Ask me about leave, rosters, safety procedures, or any SOP. I only answer from the documents your role can see, and I link the source for every answer."
+      preset:
+        endpoint: "agents"
+        # Seeded + auto-patched by deploy/create-agent.sh (the "SOP Claude" agent).
+        agent_id: "agent_pE30gepVMJyNV3kHm6-Q4"
+    # The local (Ollama / qwen2.5:7b) SOP agent — kept as a no-cloud fallback that
+    # staff can still pick (enforce:false). Identical role gate + citing prompt.
+    - name: "sop"
+      label: "SOP (local)"
+      description: "Cited answers on HR policy, SOPs and safety — scoped to your role (local model)."
       iconURL: "/assets/icon-192x192.png"
       greeting: "Hi — I'm the Wiseway HR & SOP Assistant. Ask me about leave, rosters, safety procedures, or any SOP. I only answer from the documents your role can see, and I link the source for every answer."
       preset:

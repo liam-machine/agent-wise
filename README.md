@@ -80,20 +80,23 @@ docker compose up -d
 # 5. Create the two demo logins (User / Admin).
 ./deploy/create-accounts.sh
 
-# 6. Seed + pin the default "SOP" agent (creates it, shares it to both logins,
+# 6. Seed + pin the SOP agents (creates them, shares them to both logins,
 #    patches librechat.yaml, restarts LibreChat).
 ./deploy/create-agent.sh
 ```
 
 Then open **<http://localhost:3080>** — a Wiseway **User / Admin password box**
 appears (the demo login gate; see [Demo logins](#demo-logins)). Both accounts land
-on the pinned **"SOP"** assistant out of the box.
+on the pinned **"SOP Claude"** assistant out of the box.
 
-> **About the agent.** LibreChat agents can't be declared in YAML, but they *can*
+> **About the agents.** LibreChat agents can't be declared in YAML, but they *can*
 > be created via its REST API — so [`deploy/create-agent.sh`](deploy/create-agent.sh)
-> ships the "SOP" agent (Ollama `qwen2.5:7b`, the `wiseway-docs` search+fetch
-> tools, the citing system prompt), shares it publicly so the **User** account can
-> open it, and ensures the `warehouse` role carries `AGENTS.USE`. To customise it,
+> ships **two** SOP agents (both wired to the `wiseway-docs` search+fetch tools with
+> the same citing system prompt — only the model differs): **"SOP Claude"** (Anthropic
+> `claude-sonnet-4-6`, the default everyone lands on — needs `ANTHROPIC_API_KEY` in
+> `deploy/.env`) and **"SOP"** (Ollama `qwen2.5:7b`, the local fallback). It shares
+> them publicly so the **User** account can open them, and ensures the `warehouse`
+> role carries `AGENTS.USE`. To customise them,
 > sign in as **Admin** → **Agent Builder**; the prompt/tool recipe is also in the
 > comments of [`deploy/librechat.yaml`](deploy/librechat.yaml) under `modelSpecs`.
 > `modelSpecs.enforce` is `false` (staff may also pick the plain model / other

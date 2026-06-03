@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Seed the default "SOP" agent for the Wiseway Staff Assistant.
+# Seed the SOP agents for the Wiseway Staff Assistant.
 #
 # LibreChat agents can't be declared in librechat.yaml — but they CAN be created
-# via LibreChat's REST API, so this script ships the agent the same way
+# via LibreChat's REST API, so this script ships the agents the same way
 # create-accounts.sh ships the demo logins: one command, after the stack is up.
 #
-# It does the THREE things that make an agent usable by a non-author (the UI
-# hides these behind one "Share" button):
-#   1. Creates the "SOP" agent  (POST /api/agents)         — Ollama / qwen2.5:7b,
-#      wired to the wiseway-docs MCP search+fetch tools, with the citing prompt.
+# It seeds TWO agents — identical gated MCP tools + citing prompt, different model:
+#   - "SOP Claude" — Anthropic / claude-sonnet-4-6  (the DEFAULT for everyone)
+#   - "SOP"        — Ollama   / qwen2.5:7b          (local, no-cloud fallback)
+#
+# For EACH agent it does the THREE things that make an agent usable by a
+# non-author (the UI hides these behind one "Share" button):
+#   1. Creates the agent       (POST /api/agents)          — wired to the
+#      wiseway-docs MCP search+fetch tools, with the citing prompt.
 #   2. Shares it publicly       (PUT /api/permissions/...) — public "agent_viewer"
 #      ACL so the warehouse User (not just the Admin author) can open it.
-#   3. Ensures the `warehouse` role exists in the Mongo `roles` collection with
-#      AGENTS.USE — without it the ACL grant is overridden and the User is
+#   3. (once) Ensures the `warehouse` role exists in the Mongo `roles` collection
+#      with AGENTS.USE — without it the ACL grant is overridden and the User is
 #      Forbidden (the LibreChat role nuance flagged in CLAUDE.md).
-# Then it patches deploy/librechat.yaml's modelSpecs.agent_id to the new id and
-# restarts LibreChat so the agent is the pinned default for everyone.
+# Then it patches each agent's id into the matching modelSpecs entry in
+# deploy/librechat.yaml and restarts LibreChat, so "SOP Claude" is the pinned
+# default for everyone with "SOP" (local) as a selectable fallback.
 #
-# Idempotent: re-running reuses the existing "SOP" agent (no duplicates).
+# NOTE: "SOP Claude" only RUNS once ANTHROPIC_API_KEY is set in deploy/.env and
+# LibreChat has been recreated to pick it up. The script warns if it's missing
+# but still seeds the agent (so the model is ready the moment the key lands).
+#
+# Idempotent: re-running reuses the existing agents by name (no duplicates).
 #
 # Prereqs (host): curl + node (node is already used in README/.env for secrets).
 # Run AFTER `docker compose up -d` and `./deploy/create-accounts.sh`:
@@ -42,7 +51,6 @@ UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, l
 
 ADMIN_EMAIL="admin@wiseway.demo"
 ADMIN_PASS="wisewayadmin"
-AGENT_NAME="SOP"
 AGENT_DESC="Cited answers on HR policy, SOPs and safety — scoped to your role."
 
 # The citing system prompt — load-bearing: the local model will not auto-cite.
@@ -59,6 +67,13 @@ docker inspect -f '{{.State.Running}}' "$LC" >/dev/null 2>&1 || {
 if ! docker exec "$DB" mongosh LibreChat --quiet --eval \
      'quit(db.users.findOne({email:"'"$ADMIN_EMAIL"'"})?0:1)' >/dev/null 2>&1; then
   say "✗ admin account missing. Run './deploy/create-accounts.sh' first."; exit 1
+fi
+
+# Warn (don't fail) if the Anthropic key is missing — "SOP Claude" needs it to RUN.
+if [ -z "$(docker exec "$LC" printenv ANTHROPIC_API_KEY 2>/dev/null)" ]; then
+  say "⚠ ANTHROPIC_API_KEY is not set in the librechat container — \"SOP Claude\""
+  say "  will be seeded but won't run until you add it to deploy/.env and run"
+  say "  'docker compose up -d --force-recreate librechat'."
 fi
 
 # --- 1. ensure the warehouse role exists with USE perms (clone USER) --------
@@ -80,68 +95,81 @@ TOKEN=$(curl -fsS -A "$UA" -X POST "$BASE/api/auth/login" \
   | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).token||''))")
 [ -n "$TOKEN" ] || { say "✗ admin login failed."; exit 1; }
 
-# --- 3. reuse existing "SOP" agent, or create it ----------------------------
-AGENT_ID=$(docker exec "$DB" mongosh LibreChat --quiet --eval '
-  const a = db.agents.find({name:"'"$AGENT_NAME"'"}).sort({updatedAt:-1}).limit(1).toArray()[0];
-  print(a ? a.id : "");' 2>/dev/null | tr -d '[:space:]')
+# --- 3. seed each SOP agent: create-or-reuse, share publicly, pin in yaml ----
+# seed_agent <mongo-name> <provider> <model> <yaml-spec-name>
+#   provider MUST be the normalized (lowercase) endpoint name. LibreChat keys its
+#   model map by normalizeEndpointName(...) but validates an agent run with
+#   modelsConfig[agent.provider] WITHOUT normalizing — so "Ollama" here yields
+#   "Models for Ollama could not be loaded". Use "ollama" / "anthropic".
+seed_agent() {
+  local NAME="$1" PROVIDER="$2" MODEL="$3" SPEC="$4" AID OBJID PAYLOAD
 
-if [ -n "$AGENT_ID" ]; then
-  say "Reusing existing '$AGENT_NAME' agent: $AGENT_ID"
-else
-  say "Creating '$AGENT_NAME' agent…"
-  PAYLOAD=$(AGENT_NAME="$AGENT_NAME" AGENT_DESC="$AGENT_DESC" \
-    AGENT_INSTRUCTIONS="$AGENT_INSTRUCTIONS" TOOLS_JSON="$TOOLS_JSON" node -e '
-    process.stdout.write(JSON.stringify({
-      name: process.env.AGENT_NAME,
-      description: process.env.AGENT_DESC,
-      instructions: process.env.AGENT_INSTRUCTIONS,
-      // provider MUST be the normalized endpoint name (lowercase). LibreChat keys
-      // its model map by normalizeEndpointName("Ollama") -> "ollama", but validates
-      // an agent run with modelsConfig[agent.provider] WITHOUT normalizing — so a
-      // capitalized "Ollama" here yields "Models for Ollama could not be loaded".
-      provider: "ollama",
-      model: "qwen2.5:7b",
-      tools: JSON.parse(process.env.TOOLS_JSON),
-    }))')
-  AGENT_ID=$(curl -fsS -A "$UA" -X POST "$BASE/api/agents" \
+  AID=$(docker exec "$DB" mongosh LibreChat --quiet --eval '
+    const a = db.agents.find({name:"'"$NAME"'"}).sort({updatedAt:-1}).limit(1).toArray()[0];
+    print(a ? a.id : "");' 2>/dev/null | tr -d '[:space:]')
+
+  if [ -n "$AID" ]; then
+    say "Reusing existing '$NAME' agent: $AID"
+  else
+    say "Creating '$NAME' agent ($PROVIDER / $MODEL)…"
+    PAYLOAD=$(AGENT_NAME="$NAME" AGENT_DESC="$AGENT_DESC" \
+      AGENT_INSTRUCTIONS="$AGENT_INSTRUCTIONS" TOOLS_JSON="$TOOLS_JSON" \
+      PROVIDER="$PROVIDER" MODEL="$MODEL" node -e '
+      process.stdout.write(JSON.stringify({
+        name: process.env.AGENT_NAME,
+        description: process.env.AGENT_DESC,
+        instructions: process.env.AGENT_INSTRUCTIONS,
+        provider: process.env.PROVIDER,
+        model: process.env.MODEL,
+        tools: JSON.parse(process.env.TOOLS_JSON),
+      }))')
+    AID=$(curl -fsS -A "$UA" -X POST "$BASE/api/agents" \
+      -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+      -d "$PAYLOAD" \
+      | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(!j.id){console.error(s);process.exit(1)}process.stdout.write(j.id)})")
+    say "  created: $AID"
+  fi
+
+  # Share publicly (needs the Mongo _id, not the agent_ id) so non-authors can open it.
+  OBJID=$(docker exec "$DB" mongosh LibreChat --quiet --eval '
+    const a = db.agents.findOne({id:"'"$AID"'"},{_id:1}); print(a?a._id.toString():"");' \
+    2>/dev/null | tr -d '[:space:]')
+  [ -n "$OBJID" ] || { say "✗ could not resolve _id for '$NAME'."; exit 1; }
+  curl -fsS -A "$UA" -X PUT "$BASE/api/permissions/agent/$OBJID" \
     -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
-    -d "$PAYLOAD" \
-    | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(!j.id){console.error(s);process.exit(1)}process.stdout.write(j.id)})")
-  say "  created: $AGENT_ID"
-fi
+    -d '{"public":true,"publicAccessRoleId":"agent_viewer"}' >/dev/null
+  say "  shared publicly (agent_viewer)."
 
-# --- 4. share publicly (needs the Mongo _id, not the agent_ id) -------------
-OBJID=$(docker exec "$DB" mongosh LibreChat --quiet --eval '
-  const a = db.agents.findOne({id:"'"$AGENT_ID"'"},{_id:1}); print(a?a._id.toString():"");' \
-  2>/dev/null | tr -d '[:space:]')
-[ -n "$OBJID" ] || { say "✗ could not resolve agent _id."; exit 1; }
-say "Sharing agent publicly (agent_viewer)…"
-curl -fsS -A "$UA" -X PUT "$BASE/api/permissions/agent/$OBJID" \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
-  -d '{"public":true,"publicAccessRoleId":"agent_viewer"}' >/dev/null
-say "  shared."
+  # Pin into the matching modelSpecs entry — anchor on the spec `name:` so each
+  # agent_id lands in its own block (there are two now).
+  node -e '
+    const fs=require("fs"), f=process.argv[1], spec=process.argv[2], id=process.argv[3];
+    let y=fs.readFileSync(f,"utf8");
+    const re=new RegExp("(name:\\s*\""+spec+"\"[\\s\\S]*?agent_id:\\s*\")[^\"]*(\")");
+    if(!re.test(y)){console.error("  WARN: no agent_id for spec \""+spec+"\" in "+f);process.exit(0)}
+    fs.writeFileSync(f, y.replace(re, `$1${id}$2`));
+    console.log("  "+spec+" agent_id -> "+id);
+  ' "$YAML" "$SPEC" "$AID"
+}
 
-# --- 5. patch librechat.yaml + restart --------------------------------------
-say "Pinning agent in librechat.yaml…"
-# Replace the single agent_id line under modelSpecs.preset.
-node -e '
-  const fs=require("fs"), f=process.argv[1], id=process.argv[2];
-  let y=fs.readFileSync(f,"utf8");
-  const re=/(agent_id:\s*")[^"]*(")/;
-  if(!re.test(y)){console.error("  WARN: no agent_id line found in "+f);process.exit(0)}
-  fs.writeFileSync(f, y.replace(re, `$1${id}$2`));
-  console.log("  agent_id -> "+id);
-' "$YAML" "$AGENT_ID"
+seed_agent "SOP Claude" "anthropic" "claude-sonnet-4-6" "sop-claude"
+seed_agent "SOP"        "ollama"    "qwen2.5:7b"        "sop"
 
-say "Restarting LibreChat to load the pinned agent…"
+# --- 4. restart LibreChat once to load the pinned agents --------------------
+say "Restarting LibreChat to load the pinned agents…"
 ( cd "$REPO_ROOT" && docker compose up -d --force-recreate librechat >/dev/null )
 
 cat <<EOF
 
-✓ Done. "$AGENT_NAME" agent ($AGENT_ID) is created, shared, and pinned as the default.
-  - Admin and User both land on it (User via the public agent_viewer ACL).
-  - enforce:false in librechat.yaml lets staff also pick the plain Ollama model /
-    any other shared agent. Set enforce:true to lock them to SOP for production.
+✓ Done. Two SOP agents are created, shared, and pinned:
+  - "SOP Claude" (Anthropic claude-sonnet-4-6) — the DEFAULT everyone lands on.
+  - "SOP" (local Ollama qwen2.5:7b)            — selectable fallback.
+  Admin and User both reach them (User via the public agent_viewer ACL).
+  enforce:false lets staff also pick the local SOP / any other shared agent;
+  set enforce:true to lock them to the default for production.
 
-Open http://localhost:3080 — sign in as User (password 'user') to confirm SOP loads.
+  If "SOP Claude" errors on send, confirm ANTHROPIC_API_KEY is in deploy/.env and
+  re-run 'docker compose up -d --force-recreate librechat'.
+
+Open http://localhost:3080 — sign in as User (password 'user') to confirm SOP Claude loads.
 EOF
