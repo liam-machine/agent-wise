@@ -108,6 +108,28 @@ services:
     networks:
       - wiseway
 
+  # Admin feedback dashboard — read-only view over the 👍/👎 + reason tags staff
+  # leave on assistant answers (LibreChat writes these onto message docs in
+  # Mongo and ships no admin view). Reads the same Mongo; never writes feedback.
+  # Empty DB => empty dashboard. Local demo data: ./deploy/seed-feedback.local.sh
+  # (gitignored — stays on the dev machine; a real deploy starts empty).
+  # SECURITY (PoC): no auth — gate behind admin SSO / internal-only network
+  # before real data. INTEGRATE: see docs/INTEGRATION.md.
+  wiseway-feedback-dash:
+    build:
+      context: ./feedback-dash
+    container_name: wiseway-feedback-dash
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    environment:
+      - PORT=8050
+      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+    depends_on:
+      - mongodb
+    networks:
+      - wiseway
+
 networks:
   wiseway:
     driver: bridge

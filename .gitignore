@@ -5,6 +5,11 @@ deploy/.env
 *.secret
 **/*.secret
 
+# Local-only demo data + scripts (dev machine only — never commit, never prod) -
+# e.g. deploy/seed-feedback.local.{js,sh}: sample feedback for the dashboard.
+**/*.local.js
+**/*.local.sh
+
 # Generated self-signed certs (run mock-idp/gen-certs.sh) ----------------------
 mock-idp/certs/
 
@@ -17,3 +22,11 @@ deploy/data-node/
 # OS / editor cruft -----------------------------------------------------------
 .DS_Store
 *.log
+
+# eval harness — generated secrets & artifacts
+eval/.env
+eval/agents.json
+eval/promptfoo/promptfooconfig.generated.json
+eval/promptfoo/results.json
+eval/promptfoo/.promptfoo/
+eval/raw-extract/
