@@ -181,10 +181,37 @@ export async function search(query, limit = 8) {
 }
 
 /**
- * Fetch a single document by id. Returns null if unknown.
+ * Resolve the id a model passed to fetch against our doc store. Models often
+ * don't echo the exact doc_id: they append a file extension (".docx"), or pass
+ * the whole source_url. Be lenient so a correct intent isn't lost to formatting.
+ * This does NOT weaken the role gate — server.js still re-checks doc.category.
+ */
+function resolveDoc(idOrUrl) {
+  const raw = String(idOrUrl || '').trim();
+  if (!raw) return null;
+  const stripExt = (s) => s.replace(/\.(md|markdown|docx?|pdf|txt|html?)$/i, '');
+
+  // 1. exact doc_id
+  if (docs.has(raw)) return docs.get(raw);
+  // 2. doc_id with a trailing file extension (e.g. "forklift-operation-sop.docx")
+  if (docs.has(stripExt(raw))) return docs.get(stripExt(raw));
+  // 3. a full URL or path — use the last segment, url-decoded, extension stripped
+  let tail = raw.split(/[\\/]/).pop();
+  try { tail = decodeURIComponent(tail); } catch { /* leave as-is */ }
+  if (docs.has(stripExt(tail))) return docs.get(stripExt(tail));
+  // 4. last resort: a hit whose source_url matches what was passed
+  for (const d of docs.values()) {
+    if (d.source_url && (d.source_url === raw || d.source_url === tail)) return d;
+  }
+  return null;
+}
+
+/**
+ * Fetch a single document by id (or source_url / id-with-extension). Returns
+ * null if unknown.
  */
 export async function fetch(doc_id) {
-  const doc = docs.get(String(doc_id));
+  const doc = resolveDoc(doc_id);
   if (!doc) return null;
   return {
     doc_id: doc.doc_id,

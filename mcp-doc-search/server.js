@@ -102,7 +102,8 @@ function buildServer({ role, userId }) {
       title: 'Search Wiseway documents',
       description:
         'Search internal Wiseway HR / SOP / safety / payroll documents. ' +
-        'Returns ranked hits as text blocks formatted "[i] Title — source_url\\nsnippet". ' +
+        'Returns ranked hits as text blocks formatted "[i] Title (doc_id: …) — source_url\\nsnippet". ' +
+        'The snippet is only an excerpt — call fetch with the doc_id to read the full document body before answering. ' +
         'Cite each fact you use as [Title](source_url).',
       inputSchema: {
         query: z.string().describe('Natural-language search query.'),
@@ -174,11 +175,12 @@ function buildServer({ role, userId }) {
         };
       }
 
-      // 4. Format hits as text blocks the local model will cite as markdown
-      //    links: "[i] Title — source_url\nsnippet".
+      // 4. Format hits as text blocks the model can both cite and fetch:
+      //    "[i] Title (doc_id: …) — source_url\nsnippet". The doc_id is what
+      //    fetch expects; without it the model can only guess (and fetch fails).
       const content = visible.map((h, i) => ({
         type: 'text',
-        text: `[${i + 1}] ${h.title} — ${h.source_url}\n${h.snippet}`,
+        text: `[${i + 1}] ${h.title} (doc_id: ${h.doc_id}) — ${h.source_url}\n${h.snippet}`,
       }));
 
       return { content };
